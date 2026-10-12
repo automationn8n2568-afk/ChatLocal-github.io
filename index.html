@@ -1,3 +1,137 @@
-git add index.html
-git commit -m "Fix userInput ID mismatch and update script"
-git push origin main
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI ระบบผู้ช่วยงานโรงพยาบาล (RAG)</title>
+    <!-- ใช้ Tailwind CSS เพื่อความสวยงามและความรวดเร็ว -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 h-screen flex flex-col justify-between">
+
+    <!-- Header ส่วนหัวของแอป -->
+    <header class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
+        <h1 class="text-lg font-bold">🏥 ระบบ AI ตอบคำถามระเบียบโรงพยาบาล (RAG)</h1>
+        <span class="text-xs bg-blue-500 px-2 py-1 rounded">Online Server</span>
+    </header>
+
+    <!-- Chat Box พื้นที่แสดงข้อความสนทนา -->
+    <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl w-full mx-auto">
+        <!-- ข้อความต้อนรับจาก AI -->
+        <div class="flex items-start space-x-2">
+            <div class="bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center font-bold">AI</div>
+            <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 max-w-[80%] text-slate-700">
+                สวัสดีครับ ผมคือผู้ช่วย AI ที่เชื่อมต่อกับฐานข้อมูล RAG ขององค์กร มีอะไรให้ผมช่วยค้นหาข้อมูลหรือระเบียบวันนี้ไหมครับ?
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer ส่วนพิมพ์ข้อความส่ง -->
+    <footer class="bg-white border-t border-slate-200 p-3 shadow-lg">
+        <form id="chat-form" class="max-w-3xl mx-auto flex gap-2">
+            <input 
+                type="text" 
+                id="user-input" 
+                placeholder="พิมพ์คำถามของคุณที่นี่ เช่น การเบิกโอทีต้องทำอย่างไร..." 
+                class="flex-1 border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                autocomplete="off"
+                required
+            >
+            <button 
+                type="submit" 
+                id="send-btn"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium text-sm transition-all shadow-sm"
+            >
+                ส่งข้อความ
+            </button>
+        </form>
+    </footer>
+
+    <!-- ส่วนจัดการการเชื่อมต่อ (JavaScript) -->
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('send-btn');
+
+        // ⚠️ สำคัญ: เปลี่ยน URL นี้เป็น IP ของ Server (เช่น Tailscale IP หรือ IP วงแลน) 
+        // ที่คุณจะนำโค้ด Python ไปรันเป็น API (เช่น FastAPI) ในขั้นตอนถัดไป
+        const API_SERVER_URL = "http://100.119.235.76:8000/ask"; 
+
+        chatForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const question = userInput.value.trim();
+            if (!question) return;
+
+            // 1. แสดงข้อความฝั่งผู้ใช้บนหน้าจอ
+            appendMessage(question, 'user');
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'กำลังค้นหา...';
+
+            // สร้างกล่องข้อความรอคำตอบจาก AI
+            const loadingId = appendMessage('กำลังค้นหาข้อมูลจาก RAG และประมวลผล...', 'ai', true);
+
+            try {
+                // 2. ส่งคำถามไปยัง Server Python ของคุณ
+                const response = await fetch(API_SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ question: question })
+                });
+
+                if (!response.ok) {
+                    throw new Error('ไม่สามารถเชื่อมต่อกับ Server ได้');
+                }
+
+                const data = await response.json();
+                
+                // 3. ลบข้อความกำลังโหลด และแสดงคำตอบจริงจาก AI
+                removeMessage(loadingId);
+                appendMessage(data.answer, 'ai');
+
+            } catch (error) {
+                removeMessage(loadingId);
+                appendMessage('⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์กลาง: ' + error.message, 'ai');
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'ส่งข้อความ';
+                userInput.focus();
+            }
+        });
+
+        // ฟังก์ชันช่วยจัดการแสดงข้อความลงในหน้าจอแชท
+        function appendMessage(text, sender, isLoading = false) {
+            const messageId = 'msg-' + Date.now();
+            const isUser = sender === 'user';
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.id = messageId;
+            messageDiv.className = `flex items-start space-x-2 ${isUser ? 'flex-row-reverse space-x-reverse' : ''}`;
+            
+            messageDiv.innerHTML = `
+                <div class="${isUser ? 'bg-slate-700' : 'bg-blue-600'} text-white rounded-full h-8 w-8 flex items-center justify-center font-bold text-xs shrink-0">
+                    ${isUser ? 'คุณ' : 'AI'}
+                </div>
+                <div class="${isUser ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border border-slate-100'} p-3 rounded-2xl shadow-sm max-w-[80%] text-sm whitespace-pre-wrap ${isLoading ? 'italic text-slate-400' : ''}">
+                    ${text}
+                </div>
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return messageId;
+        }
+
+        // ฟังก์ชันลบข้อความกำลังโหลด
+        function removeMessage(id) {
+            const element = document.getElementById(id);
+            if (element) element.remove();
+        }
+    </script>
+</body>
+</html>
